@@ -24,6 +24,7 @@ GUI генератор этикеток/ШК для Wildberries.
     python wb_barcode_gui.py
 """
 
+import io
 import json
 import os
 import re
@@ -278,27 +279,33 @@ def draw_label(c: canvas.Canvas, row: dict, settings: dict, font_name: str):
     )
 
 
-def make_pdf_for_row(row: dict, out_dir: str, settings: dict, font_name: str):
-    name = "_".join([
+def row_filename(row: dict) -> str:
+    return "_".join([
         sanitize_filename(row["Артикул"]),
         sanitize_filename(row["Цвет"]),
         sanitize_filename(row["Размер"]),
     ]) + ".pdf"
-    path = Path(out_dir) / name
-    c = canvas.Canvas(str(path), pagesize=(LABEL_W_MM * mm, LABEL_H_MM * mm))
-    draw_label(c, row, settings, font_name)
-    c.save()
-    return path
 
 
-def make_one_pdf(rows: list, out_dir: str, settings: dict, font_name: str):
-    path = Path(out_dir) / "WB_этикетки_58x40.pdf"
-    c = canvas.Canvas(str(path), pagesize=(LABEL_W_MM * mm, LABEL_H_MM * mm))
+def unique_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    n = 1
+    while True:
+        cand = path.with_name(f"{path.stem} ({n}){path.suffix}")
+        if not cand.exists():
+            return cand
+        n += 1
+
+
+def render_pdf(rows: list, settings: dict, font_name: str) -> bytes:
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(LABEL_W_MM * mm, LABEL_H_MM * mm))
     for row in rows:
         draw_label(c, row, settings, font_name)
         c.showPage()
     c.save()
-    return path
+    return buf.getvalue()
 
 
 # ---------------------------------------------------------------------------
@@ -661,6 +668,33 @@ class App:
             raise ValueError("Excel-файл не найден")
         os.makedirs(self.output_dir.get(), exist_ok=True)
 
+    def _reset_save_state(self):
+        self._used_paths = set()
+        self._save_new_on_lock = None
+
+    def _save_pdf(self, data: bytes, base_path: Path):
+        path = base_path
+        if path in self._used_paths:
+            path = unique_path(path)
+        try:
+            with open(path, "wb") as f:
+                f.write(data)
+        except PermissionError:
+            if self._save_new_on_lock is None:
+                self._save_new_on_lock = messagebox.askyesno(
+                    "Файл занят",
+                    f"Файл занят (открыт в просмотрщике):\n{path.name}\n\n"
+                    "Сохранить под новым именем?",
+                )
+            if not self._save_new_on_lock:
+                self.write_log(f"Пропущено (файл занят): {path.name}")
+                return None
+            path = unique_path(path)
+            with open(path, "wb") as f:
+                f.write(data)
+        self._used_paths.add(path)
+        return path
+
     def generate(self):
         try:
             self.validate_paths()
@@ -671,7 +705,9 @@ class App:
                 raise ValueError("В Excel нет строк для выгрузки")
 
             self.write_log(f"Найдено строк: {len(rows)}")
+            self._reset_save_state()
             errors = 0
+            out = Path(self.output_dir.get())
 
             if int(settings.get("make_one_pdf", 0)):
                 valid_rows = []
@@ -683,13 +719,17 @@ class App:
                         errors += 1
                         self.write_log(f"Строка {row.get('_row')}: ошибка - {e}")
                 if valid_rows:
-                    path = make_one_pdf(valid_rows, self.output_dir.get(), settings, self.pdf_font_name)
-                    self.write_log(f"Создан общий PDF: {path}")
+                    data = render_pdf(valid_rows, settings, self.pdf_font_name)
+                    path = self._save_pdf(data, out / "WB_этикетки_58x40.pdf")
+                    if path:
+                        self.write_log(f"Создан общий PDF: {path}")
             else:
                 for row in rows:
                     try:
-                        path = make_pdf_for_row(row, self.output_dir.get(), settings, self.pdf_font_name)
-                        self.write_log(f"OK строка {row.get('_row')}: {path.name}")
+                        data = render_pdf([row], settings, self.pdf_font_name)
+                        path = self._save_pdf(data, out / row_filename(row))
+                        if path:
+                            self.write_log(f"OK строка {row.get('_row')}: {path.name}")
                     except Exception as e:
                         errors += 1
                         self.write_log(f"Строка {row.get('_row')}: ошибка - {e}")
@@ -706,9 +746,12 @@ class App:
             if not self.output_dir.get():
                 return
             settings = self.current_settings()
-            path = make_pdf_for_row(dict(self.TEST_ROW), self.output_dir.get(), settings, self.pdf_font_name)
-            self.write_log(f"Тестовый PDF создан: {path}")
-            messagebox.showinfo("Готово", f"Тестовый PDF создан:\n{path}")
+            self._reset_save_state()
+            data = render_pdf([dict(self.TEST_ROW)], settings, self.pdf_font_name)
+            path = self._save_pdf(data, Path(self.output_dir.get()) / row_filename(dict(self.TEST_ROW)))
+            if path:
+                self.write_log(f"Тестовый PDF создан: {path}")
+                messagebox.showinfo("Готово", f"Тестовый PDF создан:\n{path}")
         except Exception as e:
             self.write_log(traceback.format_exc())
             messagebox.showerror("Ошибка", str(e))
