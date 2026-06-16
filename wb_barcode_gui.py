@@ -49,7 +49,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 LABEL_W_MM = 58
 LABEL_H_MM = 40
-REQUIRED_COLUMNS = ["Артикул", "Цвет", "Размер", "Материал", "Баркод", "Срок годности"]
+REQUIRED_COLUMNS = ["Артикул", "Артикул WB", "Цвет", "Размер", "Состав", "Баркод", "Срок годности"]
 SETTINGS_FILE = Path(__file__).with_name("wb_barcode_settings.json")
 
 # ---- имя зарегистрированного в reportlab шрифта ----
@@ -234,7 +234,7 @@ def label_lines(row: dict):
         ("article_x", "article_y", f"Артикул: {row['Артикул']}"),
         ("color_x", "color_y", f"Цвет: {row['Цвет']}"),
         ("size_x", "size_y", f"Размер: {row['Размер']}"),
-        ("material_x", "material_y", f"Материал: {row['Материал']}"),
+        ("material_x", "material_y", f"Состав: {row['Состав']}"),
         ("expiry_x", "expiry_y", f"Срок годности: {row['Срок годности']}"),
     ]
 
@@ -479,11 +479,12 @@ class Preview:
 class App:
     TEST_ROW = {
         "Артикул": "TEST-001",
+        "Артикул WB": "120909012",
         "Цвет": "Черный",
         "Размер": "38",
-        "Материал": "Натуральная кожа",
+        "Состав": "Полиэстер",
         "Баркод": "460123456789",
-        "Срок годности": "Не ограничен",
+        "Срок годности": "1 мес",
     }
 
     def __init__(self, root: Tk):
@@ -577,16 +578,6 @@ class App:
         ttk.Button(buttons, text="Сформировать PDF", command=self.generate).pack(side="left", padx=4)
         ttk.Button(buttons, text="Сделать тестовый PDF", command=self.test_pdf).pack(side="left", padx=4)
         ttk.Button(buttons, text="Превью из Excel (1-я строка)", command=self.preview_from_excel).pack(side="left", padx=4)
-
-        # ---- справка ----
-        font_info = f"Шрифт превью/PDF: {os.path.basename(FONT_PATH)}" if FONT_PATH else "ВНИМАНИЕ: TTF не найден — кириллица будет квадратами!"
-        help_text = (
-            "Формат Excel: первая строка - заголовки. Обязательные колонки: "
-            "Артикул, Цвет, Размер, Материал, Баркод, Срок годности.\n"
-            "EAN-13: если в Excel 12 цифр, контрольная добавится автоматически; если 13 - проверится.\n"
-            f"Размер этикетки фиксированный: 58 x 40 мм.   {font_info}"
-        )
-        ttk.Label(left, text=help_text, justify="left", foreground=("#a00" if not FONT_PATH else "#333")).pack(fill="x", **pad)
 
         self.log = Text(left, height=10)
         self.log.pack(fill="both", expand=True, **pad)
