@@ -242,6 +242,7 @@ def label_lines(row: dict):
 
 def draw_barcode(c: canvas.Canvas, ean13: str, x_mm: float, y_mm: float, w_mm: float, h_mm: float):
     widget = Ean13BarcodeWidget(ean13[:12])
+    widget.humanReadable = 0
     bounds = widget.getBounds()
     bw = bounds[2] - bounds[0]
     bh = bounds[3] - bounds[1]
