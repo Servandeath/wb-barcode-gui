@@ -674,26 +674,9 @@ class App:
         self._save_new_on_lock = None
 
     def _save_pdf(self, data: bytes, base_path: Path):
-        path = base_path
-        if path in self._used_paths:
-            path = unique_path(path)
-        try:
-            with open(path, "wb") as f:
-                f.write(data)
-        except PermissionError:
-            if self._save_new_on_lock is None:
-                self._save_new_on_lock = messagebox.askyesno(
-                    "Файл занят",
-                    f"Файл занят (открыт в просмотрщике):\n{path.name}\n\n"
-                    "Сохранить под новым именем?",
-                )
-            if not self._save_new_on_lock:
-                self.write_log(f"Пропущено (файл занят): {path.name}")
-                return None
-            path = unique_path(path)
-            with open(path, "wb") as f:
-                f.write(data)
-        self._used_paths.add(path)
+        path = unique_path(base_path)
+        with open(path, "wb") as f:
+            f.write(data)
         return path
 
     def generate(self):
