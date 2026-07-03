@@ -96,6 +96,10 @@ DEFAULT_SETTINGS = {
     "barcode_digits_y": 2,
     "barcode_digits_font_size": 7,
 
+    "num_x": 50,
+    "num_y": 37,
+    "num_font_size": 6,
+
     "make_one_pdf": 0,
     "show_grid": 1,
 }
@@ -221,6 +225,7 @@ def read_excel_rows(path: str):
         if not any(item.values()):
             continue
         item["_row"] = r
+        item["_num"] = len(rows) + 1
         rows.append(item)
     return rows
 
@@ -278,6 +283,11 @@ def draw_label(c: canvas.Canvas, row: dict, settings: dict, font_name: str):
         float(settings["barcode_digits_y"]) * mm,
         ean13,
     )
+
+    num = str(row.get("_num", ""))
+    if num:
+        c.setFont(font_name, int(settings["num_font_size"]))
+        c.drawString(float(settings["num_x"]) * mm, float(settings["num_y"]) * mm, num)
 
 
 def row_filename(row: dict) -> str:
@@ -473,6 +483,19 @@ class Preview:
         digits_text = valid_code if valid_code else re.sub(r"\D", "", str(row.get("Баркод", "")))
         d.text((dx, dy - ascent), digits_text, fill=(0, 0, 0), font=dig_font)
 
+        # --- номер строки в углу ---
+        nfs = int(float(settings.get("num_font_size", 6)))
+        try:
+            num_font = ImageFont.truetype(font_path, pt_to_px(nfs)) if font_path else ImageFont.load_default()
+        except Exception:
+            num_font = ImageFont.load_default()
+        num_text = str(row.get("_num", ""))
+        if num_text:
+            nx = X(float(settings["num_x"]))
+            ny = Y(float(settings["num_y"]))
+            n_ascent, _ = num_font.getmetrics()
+            d.text((nx, ny - n_ascent), num_text, fill=(0, 0, 0), font=num_font)
+
         # --- вывод на Canvas ---
         self._photo = ImageTk.PhotoImage(img)
         self.canvas.config(width=W, height=H)
@@ -493,6 +516,7 @@ class App:
         "Состав": "Полиэстер",
         "Баркод": "460123456789",
         "Гарантия": "1 год",
+        "_num": 1,
     }
 
     def __init__(self, root: Tk):
@@ -554,6 +578,8 @@ class App:
             ("barcode_w", "ШК ширина"), ("barcode_h", "ШК высота"),
             ("barcode_digits_x", "Цифры ШК X"), ("barcode_digits_y", "Цифры ШК Y"),
             ("barcode_digits_font_size", "Цифры ШК шрифт"),
+            ("num_x", "Номер X"), ("num_y", "Номер Y"),
+            ("num_font_size", "Номер шрифт"),
         ]:
             var = DoubleVar(value=self.settings.get(key, DEFAULT_SETTINGS[key]))
             self.vars[key] = var
