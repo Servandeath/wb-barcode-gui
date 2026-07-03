@@ -625,31 +625,38 @@ class App:
         top.columnconfigure(1, weight=1)
 
         # ---- настройки ----
-        settings_frame = ttk.LabelFrame(left, text="Настройки положения, мм. Y считается снизу этикетки")
-        settings_frame.pack(fill="x", **pad)
+        ttk.Label(left, text="Настройки положения, мм. Y считается снизу этикетки").pack(anchor="w", padx=8)
 
-        idx = 0
-        for key, label in [
-            ("font_size", "Размер шрифта"),
-            ("article_x", "Артикул X"), ("article_y", "Артикул Y"),
-            ("color_x", "Цвет X"), ("color_y", "Цвет Y"),
-            ("size_x", "Размер X"), ("size_y", "Размер Y"),
-            ("material_x", "Материал X"), ("material_y", "Материал Y"),
-            ("expiry_x", "Гарантия X"), ("expiry_y", "Гарантия Y"),
-            ("barcode_x", "ШК X"), ("barcode_y", "ШК Y"),
-            ("barcode_w", "ШК ширина"), ("barcode_h", "ШК высота"),
-            ("barcode_digits_x", "Цифры ШК X"), ("barcode_digits_y", "Цифры ШК Y"),
-            ("barcode_digits_font_size", "Цифры ШК шрифт"),
-            ("num_x", "Номер X"), ("num_y", "Номер Y"),
-            ("num_font_size", "Номер шрифт"),
-        ]:
-            var = DoubleVar(value=self.settings.get(key, DEFAULT_SETTINGS[key]))
-            self.vars[key] = var
-            var.trace_add("write", lambda *_: self.refresh_preview())
-            ttk.Label(settings_frame, text=label).grid(row=idx // 4, column=(idx % 4) * 2, sticky="w", padx=5, pady=3)
-            e = ttk.Entry(settings_frame, textvariable=var, width=8)
-            e.grid(row=idx // 4, column=(idx % 4) * 2 + 1, padx=5, pady=3)
-            idx += 1
+        settings_groups = [
+            ("Текст", [
+                ("font_size", "Размер шрифта"),
+                ("article_x", "Артикул X"), ("article_y", "Артикул Y"),
+                ("color_x", "Цвет X"), ("color_y", "Цвет Y"),
+                ("size_x", "Размер X"), ("size_y", "Размер Y"),
+                ("material_x", "Состав X"), ("material_y", "Состав Y"),
+                ("expiry_x", "Гарантия X"), ("expiry_y", "Гарантия Y"),
+            ]),
+            ("Штрихкод", [
+                ("barcode_x", "ШК X"), ("barcode_y", "ШК Y"),
+                ("barcode_w", "ШК ширина"), ("barcode_h", "ШК высота"),
+                ("barcode_digits_x", "Цифры ШК X"), ("barcode_digits_y", "Цифры ШК Y"),
+                ("barcode_digits_font_size", "Цифры ШК шрифт"),
+            ]),
+            ("Номер строки", [
+                ("num_x", "Номер X"), ("num_y", "Номер Y"),
+                ("num_font_size", "Номер шрифт"),
+            ]),
+        ]
+        for title, fields in settings_groups:
+            frame = ttk.LabelFrame(left, text=title)
+            frame.pack(fill="x", **pad)
+            for i, (key, label) in enumerate(fields):
+                var = DoubleVar(value=self.settings.get(key, DEFAULT_SETTINGS[key]))
+                self.vars[key] = var
+                var.trace_add("write", lambda *_: self.refresh_preview())
+                ttk.Label(frame, text=label).grid(row=i // 2, column=(i % 2) * 2, sticky="w", padx=5, pady=3)
+                e = ttk.Entry(frame, textvariable=var, width=8)
+                e.grid(row=i // 2, column=(i % 2) * 2 + 1, padx=5, pady=3)
 
         # ---- опции ----
         opt_frame = ttk.Frame(left)
