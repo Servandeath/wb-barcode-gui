@@ -578,8 +578,8 @@ class App:
 
         self.pdf_font_name = register_pdf_font()
 
-        self.excel_path = StringVar()
-        self.output_dir = StringVar()
+        self.excel_path = StringVar(value=self.settings.get("excel_path", ""))
+        self.output_dir = StringVar(value=self.settings.get("output_dir", ""))
         self.vars = {}
         self.preview_row = dict(self.TEST_ROW)
 
@@ -706,6 +706,8 @@ class App:
                 settings[key] = var.get()
             except Exception:
                 pass
+        settings["excel_path"] = self.excel_path.get()
+        settings["output_dir"] = self.output_dir.get()
         return settings
 
     def save_template(self):
