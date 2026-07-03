@@ -185,7 +185,14 @@ def normalize_ean13(raw: str) -> str:
         if digits[-1] != expected:
             raise ValueError(f"неверная контрольная цифра EAN-13: {digits}, должна быть {expected}")
         return digits
+    if len(digits) == 14 and digits[0] == "0":
+        return normalize_ean13(digits[1:])
     raise ValueError(f"баркод должен содержать 12 или 13 цифр, сейчас: {raw}")
+
+
+def is_gtin(raw: str) -> bool:
+    """GTIN-14 — 14 цифр (обычно с ведущим нулём)."""
+    return len(re.sub(r"\D", "", str(raw))) == 14
 
 
 def load_settings() -> dict:
@@ -624,6 +631,12 @@ class App:
             variable=self.vars["make_one_pdf"],
         ).pack(anchor="w")
 
+        self.vars["print_gtin"] = IntVar(value=int(self.settings.get("print_gtin", 0)))
+        ttk.Checkbutton(
+            opt_frame, text="Печатать GTIN (иначе пропускать)",
+            variable=self.vars["print_gtin"],
+        ).pack(anchor="w")
+
         self.vars["show_grid"] = IntVar(value=int(self.settings.get("show_grid", 1)))
         self.vars["show_grid"].trace_add("write", lambda *_: self.refresh_preview())
         ttk.Checkbutton(
@@ -760,11 +773,22 @@ class App:
             self.write_log(f"Найдено строк: {len(rows)}")
             self._reset_save_state()
             errors = 0
+            skipped_gtin = []
+            print_gtin = int(settings.get("print_gtin", 0))
             out = Path(self.output_dir.get())
+
+            def gtin_skip(row):
+                if is_gtin(row["Баркод"]) and not print_gtin:
+                    skipped_gtin.append(row)
+                    self.write_log(f"Строка {row.get('_row')}: GTIN пропущен")
+                    return True
+                return False
 
             if int(settings.get("make_one_pdf", 0)):
                 valid_rows = []
                 for row in rows:
+                    if gtin_skip(row):
+                        continue
                     try:
                         normalize_ean13(row["Баркод"])
                         valid_rows.append(row)
@@ -778,6 +802,8 @@ class App:
                         self.write_log(f"Создан общий PDF: {path}")
             else:
                 for row in rows:
+                    if gtin_skip(row):
+                        continue
                     try:
                         data = render_pdf([row], settings, self.pdf_font_name)
                         path = self._save_pdf(data, out / row_filename(row))
@@ -787,7 +813,9 @@ class App:
                         errors += 1
                         self.write_log(f"Строка {row.get('_row')}: ошибка - {e}")
 
-            messagebox.showinfo("Готово", f"Генерация завершена. Ошибок: {errors}")
+            if skipped_gtin:
+                self.write_log(f"Пропущено GTIN: {len(skipped_gtin)} (включи 'Печатать GTIN')")
+            messagebox.showinfo("Готово", f"Генерация завершена. Ошибок: {errors}. Пропущено GTIN: {len(skipped_gtin)}")
         except Exception as e:
             self.write_log(traceback.format_exc())
             messagebox.showerror("Ошибка", str(e))
