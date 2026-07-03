@@ -230,6 +230,32 @@ def read_excel_rows(path: str):
     return rows
 
 
+def make_template(path: str):
+    """Создать пустой Excel-шаблон с нужными колонками. Баркод — текстовый формат."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Шаблон"
+    ws.append(REQUIRED_COLUMNS)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+
+    example = {
+        "Артикул": "ITALI12_Черный", "Артикул WB": "120909012",
+        "Цвет": "Черный", "Размер": "xs", "Состав": "Полиэстер",
+        "Баркод": "2000000000244", "Гарантия": "1 год",
+    }
+    ws.append([example.get(col, "") for col in REQUIRED_COLUMNS])
+
+    barcode_col = REQUIRED_COLUMNS.index("Баркод") + 1
+    for r in range(1, 501):
+        ws.cell(row=r, column=barcode_col).number_format = "@"
+
+    wb.save(path)
+
+
 # ---------------------------------------------------------------------------
 # Отрисовка PDF
 # ---------------------------------------------------------------------------
@@ -612,6 +638,7 @@ class App:
         ttk.Button(buttons, text="Сформировать PDF", command=self.generate).pack(side="left", padx=4)
         ttk.Button(buttons, text="Сделать тестовый PDF", command=self.test_pdf).pack(side="left", padx=4)
         ttk.Button(buttons, text="Превью из Excel (1-я строка)", command=self.preview_from_excel).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Шаблон Excel", command=self.save_template).pack(side="left", padx=4)
 
         self.log = Text(left, height=10)
         self.log.pack(fill="both", expand=True, **pad)
@@ -649,6 +676,22 @@ class App:
             except Exception:
                 pass
         return settings
+
+    def save_template(self):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel", "*.xlsx")],
+            initialfile="шаблон_wb.xlsx",
+        )
+        if not path:
+            return
+        try:
+            make_template(path)
+            self.write_log(f"Шаблон сохранён: {path}")
+            messagebox.showinfo("Готово", f"Шаблон сохранён:\n{path}")
+        except Exception as e:
+            self.write_log(traceback.format_exc())
+            messagebox.showerror("Ошибка", str(e))
 
     def save_current_settings(self):
         self.settings = self.current_settings()
