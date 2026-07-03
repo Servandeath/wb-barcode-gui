@@ -263,6 +263,24 @@ def make_template(path: str):
     wb.save(path)
 
 
+def make_exclusions(src_path: str, skipped_rows: list, out_path: Path) -> Path:
+    """Копия исходного Excel с жёлтой подсветкой пропущенных (GTIN) строк."""
+    from openpyxl.styles import PatternFill
+
+    wb = load_workbook(src_path)
+    ws = wb.active
+    fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+    max_col = ws.max_column
+    for row in skipped_rows:
+        r = row.get("_row")
+        if r:
+            for col in range(1, max_col + 1):
+                ws.cell(row=r, column=col).fill = fill
+    out_path = unique_path(out_path)
+    wb.save(out_path)
+    return out_path
+
+
 # ---------------------------------------------------------------------------
 # Отрисовка PDF
 # ---------------------------------------------------------------------------
@@ -814,7 +832,8 @@ class App:
                         self.write_log(f"Строка {row.get('_row')}: ошибка - {e}")
 
             if skipped_gtin:
-                self.write_log(f"Пропущено GTIN: {len(skipped_gtin)} (включи 'Печатать GTIN')")
+                excl = make_exclusions(self.excel_path.get(), skipped_gtin, out / "исключения_GTIN.xlsx")
+                self.write_log(f"Пропущено GTIN: {len(skipped_gtin)}. Список исключений: {excl}")
             messagebox.showinfo("Готово", f"Генерация завершена. Ошибок: {errors}. Пропущено GTIN: {len(skipped_gtin)}")
         except Exception as e:
             self.write_log(traceback.format_exc())
