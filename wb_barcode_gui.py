@@ -50,7 +50,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 LABEL_W_MM = 58
 LABEL_H_MM = 40
-REQUIRED_COLUMNS = ["Артикул", "Артикул WB", "Цвет", "Размер", "Состав", "Баркод", "Срок годности"]
+REQUIRED_COLUMNS = ["Артикул", "Артикул WB", "Цвет", "Размер", "Состав", "Баркод", "Гарантия"]
 SETTINGS_FILE = Path(__file__).with_name("wb_barcode_settings.json")
 
 # ---- имя зарегистрированного в reportlab шрифта ----
@@ -236,7 +236,7 @@ def label_lines(row: dict):
         ("color_x", "color_y", f"Цвет: {row['Цвет']}"),
         ("size_x", "size_y", f"Размер: {row['Размер']}"),
         ("material_x", "material_y", f"Состав: {row['Состав']}"),
-        ("expiry_x", "expiry_y", f"Срок годности: {row['Срок годности']}"),
+        ("expiry_x", "expiry_y", f"Гарантия: {row['Гарантия']}"),
     ]
 
 
@@ -492,7 +492,7 @@ class App:
         "Размер": "38",
         "Состав": "Полиэстер",
         "Баркод": "460123456789",
-        "Срок годности": "1 мес",
+        "Гарантия": "1 год",
     }
 
     def __init__(self, root: Tk):
@@ -549,7 +549,7 @@ class App:
             ("color_x", "Цвет X"), ("color_y", "Цвет Y"),
             ("size_x", "Размер X"), ("size_y", "Размер Y"),
             ("material_x", "Материал X"), ("material_y", "Материал Y"),
-            ("expiry_x", "Срок годности X"), ("expiry_y", "Срок годности Y"),
+            ("expiry_x", "Гарантия X"), ("expiry_y", "Гарантия Y"),
             ("barcode_x", "ШК X"), ("barcode_y", "ШК Y"),
             ("barcode_w", "ШК ширина"), ("barcode_h", "ШК высота"),
             ("barcode_digits_x", "Цифры ШК X"), ("barcode_digits_y", "Цифры ШК Y"),
