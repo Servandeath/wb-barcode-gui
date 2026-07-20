@@ -789,10 +789,6 @@ class App:
             raise ValueError("Excel-файл не найден")
         os.makedirs(self.output_dir.get(), exist_ok=True)
 
-    def _reset_save_state(self):
-        self._used_paths = set()
-        self._save_new_on_lock = None
-
     def _save_pdf(self, data: bytes, base_path: Path):
         path = unique_path(base_path)
         with open(path, "wb") as f:
@@ -809,7 +805,6 @@ class App:
                 raise ValueError("В Excel нет строк для выгрузки")
 
             self.write_log(f"Найдено строк: {len(rows)}")
-            self._reset_save_state()
             errors = 0
             skipped_gtin = []
             print_gtin = int(settings.get("print_gtin", 0))
@@ -866,7 +861,6 @@ class App:
             if not self.output_dir.get():
                 return
             settings = self.current_settings()
-            self._reset_save_state()
             data = render_pdf([dict(self.TEST_ROW)], settings, self.pdf_font_name)
             path = self._save_pdf(data, Path(self.output_dir.get()) / row_filename(dict(self.TEST_ROW)))
             if path:
