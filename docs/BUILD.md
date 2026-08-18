@@ -11,6 +11,7 @@ pyinstaller --noconfirm --clean --onefile --windowed `
   --icon assets/app_icon.ico `
   --version-file build/version_info.txt `
   --add-data "assets;assets" `
+  --collect-submodules reportlab.graphics.barcode `
   wb_barcode_gui.py
 ```
 
