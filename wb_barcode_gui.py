@@ -33,7 +33,7 @@ import traceback
 from pathlib import Path
 from tkinter import (
     Tk, StringVar, DoubleVar, IntVar, filedialog, messagebox, ttk,
-    Text, END, Canvas, Frame,
+    Text, END, Canvas, Frame, PanedWindow,
 )
 
 from openpyxl import load_workbook
@@ -50,6 +50,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 LABEL_W_MM = 58
 LABEL_H_MM = 40
+PREVIEW_SAFE_MARGIN_MM = 1
 REQUIRED_COLUMNS = ["Артикул", "Артикул WB", "Цвет", "Размер", "Состав", "Баркод", "Гарантия"]
 SETTINGS_FILE = Path(__file__).with_name("wb_barcode_settings.json")
 
@@ -103,6 +104,15 @@ DEFAULT_SETTINGS = {
     "make_one_pdf": 0,
     "show_grid": 1,
 }
+
+
+def action_button_columns(width: int) -> int:
+    """Number of action-button columns that fit in the left panel."""
+    if width >= 680:
+        return 5
+    if width >= 460:
+        return 3
+    return 2
 
 
 # ---------------------------------------------------------------------------
@@ -461,6 +471,14 @@ class Preview:
         # --- рамка этикетки ---
         d.rectangle([(0, 0), (W - 1, H - 1)], outline=(0, 0, 0), width=2)
 
+        # Внутренняя безопасная область не печатается. Она помогает учитывать
+        # визуальную границу страницы, которую добавляют PDF-просмотрщики.
+        safe = PREVIEW_SAFE_MARGIN_MM * ppm
+        d.rectangle(
+            [(safe, safe), (W - 1 - safe, H - 1 - safe)],
+            outline=(105, 105, 120), width=1,
+        )
+
         # --- текстовые строки ---
         fs = int(float(settings.get("font_size", 7)))
         # размер шрифта в мм -> пикс. reportlab трактует font_size в пунктах (1pt=1/72").
@@ -574,6 +592,7 @@ class App:
         self.root = root
         self.root.title("WB генератор ШК / этикеток 58x40")
         self.root.geometry("1180x760")
+        self.root.minsize(820, 620)
         self.settings = load_settings()
 
         self.pdf_font_name = register_pdf_font()
@@ -590,15 +609,41 @@ class App:
     def build_ui(self):
         pad = {"padx": 8, "pady": 4}
 
-        # Корневой контейнер: слева настройки, справа превью
-        main = ttk.Frame(self.root)
+        # Регулируемый разделитель не даёт панелям перекрывать друг друга.
+        main = PanedWindow(
+            self.root, orient="horizontal", sashwidth=7,
+            sashrelief="raised", borderwidth=0,
+        )
         main.pack(fill="both", expand=True)
 
-        # прокручиваемая левая панель (скроллбар для оконного режима)
+        # Пути закреплены сверху; прокручиваются только настройки ниже.
         left_outer = ttk.Frame(main)
-        left_outer.pack(side="left", fill="both", expand=True)
-        left_canvas = Canvas(left_outer, highlightthickness=0)
-        left_scroll = ttk.Scrollbar(left_outer, orient="vertical", command=left_canvas.yview)
+        right = ttk.Frame(main)
+        main.add(left_outer, minsize=360, stretch="always")
+        main.add(right, minsize=360, stretch="always")
+
+        top = ttk.Frame(left_outer)
+        top.pack(fill="x", padx=8, pady=(6, 4))
+        ttk.Label(top, text="Excel:").grid(row=0, column=0, sticky="w")
+        ttk.Entry(top, textvariable=self.excel_path).grid(
+            row=0, column=1, sticky="ew", padx=5
+        )
+        ttk.Button(top, text="Выбрать", command=self.choose_excel).grid(row=0, column=2)
+        ttk.Label(top, text="Папка выгрузки:").grid(
+            row=1, column=0, sticky="w", pady=(4, 0)
+        )
+        ttk.Entry(top, textvariable=self.output_dir).grid(
+            row=1, column=1, sticky="ew", padx=5, pady=(4, 0)
+        )
+        ttk.Button(top, text="Выбрать", command=self.choose_output).grid(
+            row=1, column=2, pady=(4, 0)
+        )
+        top.columnconfigure(1, weight=1)
+
+        scroll_area = ttk.Frame(left_outer)
+        scroll_area.pack(fill="both", expand=True)
+        left_canvas = Canvas(scroll_area, highlightthickness=0)
+        left_scroll = ttk.Scrollbar(scroll_area, orient="vertical", command=left_canvas.yview)
         left_canvas.configure(yscrollcommand=left_scroll.set)
         left_scroll.pack(side="right", fill="y")
         left_canvas.pack(side="left", fill="both", expand=True)
@@ -607,22 +652,6 @@ class App:
         left.bind("<Configure>", lambda e: left_canvas.configure(scrollregion=left_canvas.bbox("all")))
         left_canvas.bind("<Configure>", lambda e: left_canvas.itemconfigure(left_window, width=e.width))
         left_canvas.bind_all("<MouseWheel>", lambda e: left_canvas.yview_scroll(int(-e.delta / 120), "units"))
-
-        right = ttk.Frame(main)
-        right.pack(side="right", fill="y", padx=8, pady=8)
-
-        # ---- верхние пути ----
-        top = ttk.Frame(left)
-        top.pack(fill="x", **pad)
-
-        ttk.Label(top, text="Excel:").grid(row=0, column=0, sticky="w")
-        ttk.Entry(top, textvariable=self.excel_path, width=60).grid(row=0, column=1, sticky="we")
-        ttk.Button(top, text="Выбрать", command=self.choose_excel).grid(row=0, column=2)
-
-        ttk.Label(top, text="Папка выгрузки:").grid(row=1, column=0, sticky="w")
-        ttk.Entry(top, textvariable=self.output_dir, width=60).grid(row=1, column=1, sticky="we")
-        ttk.Button(top, text="Выбрать", command=self.choose_output).grid(row=1, column=2)
-        top.columnconfigure(1, weight=1)
 
         # ---- настройки ----
         ttk.Label(left, text="Настройки положения, мм. Y считается снизу этикетки").pack(anchor="w", padx=8)
@@ -669,9 +698,14 @@ class App:
 
         self.vars["print_gtin"] = IntVar(value=int(self.settings.get("print_gtin", 0)))
         ttk.Checkbutton(
-            opt_frame, text="Печатать GTIN (иначе пропускать)",
+            opt_frame, text="Печатать GTIN-14 (иначе добавить в исключения)",
             variable=self.vars["print_gtin"],
         ).pack(anchor="w")
+        ttk.Label(
+            opt_frame,
+            text="Исключённые строки сохраняются в отдельный Excel и подсвечиваются жёлтым.",
+            foreground="#555",
+        ).pack(anchor="w", padx=(22, 0))
 
         self.vars["show_grid"] = IntVar(value=int(self.settings.get("show_grid", 1)))
         self.vars["show_grid"].trace_add("write", lambda *_: self.refresh_preview())
@@ -683,11 +717,15 @@ class App:
         # ---- кнопки ----
         buttons = ttk.Frame(left)
         buttons.pack(fill="x", **pad)
-        ttk.Button(buttons, text="Сохранить настройки", command=self.save_current_settings).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Сформировать PDF", command=self.generate).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Сделать тестовый PDF", command=self.test_pdf).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Превью из Excel (1-я строка)", command=self.preview_from_excel).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Шаблон Excel", command=self.save_template).pack(side="left", padx=4)
+        self.action_buttons = [
+            ttk.Button(buttons, text="Сохранить", command=self.save_current_settings),
+            ttk.Button(buttons, text="Сформировать PDF", command=self.generate),
+            ttk.Button(buttons, text="Тестовый PDF", command=self.test_pdf),
+            ttk.Button(buttons, text="Превью из Excel", command=self.preview_from_excel),
+            ttk.Button(buttons, text="Шаблон Excel", command=self.save_template),
+        ]
+        self._action_button_column_count = None
+        buttons.bind("<Configure>", self._reflow_action_buttons)
 
         self.log = Text(left, height=10)
         self.log.pack(fill="both", expand=True, **pad)
@@ -699,12 +737,30 @@ class App:
         self.preview = Preview(self.preview_canvas)
         ttk.Label(
             right,
-            text="Синяя сетка = шаг 5 мм. Числа по краям = мм.\nКрасная рамка ШК = баркод невалиден.",
+            text="Синяя сетка = шаг 5 мм. Числа по краям = мм.\n"
+                 "Внутренняя рамка = безопасное поле 1 мм (не печатается).\n"
+                 "Красная рамка ШК = баркод невалиден.",
             justify="left", foreground="#555",
         ).pack(anchor="w")
 
         if not FONT_PATH:
             self.write_log("ВНИМАНИЕ: не найден TTF-шрифт с кириллицей. На Windows проверьте C:\\Windows\\Fonts\\arial.ttf")
+
+    def _reflow_action_buttons(self, event):
+        """Arrange action buttons without clipping when the pane is resized."""
+        columns = action_button_columns(event.width)
+        if columns == self._action_button_column_count:
+            return
+        self._action_button_column_count = columns
+        for button in self.action_buttons:
+            button.grid_forget()
+        for column in range(5):
+            event.widget.columnconfigure(column, weight=1 if column < columns else 0)
+        for index, button in enumerate(self.action_buttons):
+            button.grid(
+                row=index // columns, column=index % columns,
+                sticky="ew", padx=3, pady=3,
+            )
 
     # ---------------- действия ----------------
     def choose_excel(self):
