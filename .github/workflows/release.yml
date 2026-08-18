@@ -1,0 +1,33 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install -r requirements-build.txt
+      - name: Build Windows executable
+        run: >-
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name LabelMaster
+          --icon assets/app_icon.ico
+          --version-file build/version_info.txt
+          --add-data "assets;assets"
+          wb_barcode_gui.py
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/LabelMaster.exe
+          generate_release_notes: true

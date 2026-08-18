@@ -49,12 +49,23 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 
 APP_NAME = "Мастер этикеток — наклейки и штрихкоды"
+APP_VERSION = "1.1.0"
 APP_ICON = Path("assets") / "app_icon.ico"
 LABEL_W_MM = 58
 LABEL_H_MM = 40
 PREVIEW_SAFE_MARGIN_MM = 1
 REQUIRED_COLUMNS = ["Артикул", "Артикул WB", "Цвет", "Размер", "Состав", "Баркод", "Гарантия"]
-SETTINGS_FILE = Path(__file__).with_name("wb_barcode_settings.json")
+LEGACY_SETTINGS_FILE = Path(__file__).with_name("wb_barcode_settings.json")
+
+
+def user_settings_file() -> Path:
+    base = os.environ.get("APPDATA")
+    if base:
+        return Path(base) / "LabelMaster" / "settings.json"
+    return Path.home() / ".config" / "LabelMaster" / "settings.json"
+
+
+SETTINGS_FILE = user_settings_file()
 
 # ---- имя зарегистрированного в reportlab шрифта ----
 PDF_FONT_NAME = "LabelFont"
@@ -125,11 +136,10 @@ def preview_pixels_per_mm(available_width: int | None) -> float:
     return min(11, usable_width / LABEL_W_MM)
 
 
-def numeric_wheel_value(value: float, delta: int, fine: bool = False) -> float:
+def numeric_wheel_value(value: float, delta: int) -> float:
     """Adjust a numeric setting from one mouse-wheel event."""
     direction = 1 if delta > 0 else -1
-    step = 0.1 if fine else 1.0
-    return round(float(value) + direction * step, 3)
+    return round(float(value) + direction * 0.1, 3)
 
 
 def resource_path(relative_path: Path) -> Path:
@@ -232,9 +242,10 @@ def is_gtin(raw: str) -> bool:
 
 def load_settings() -> dict:
     settings = DEFAULT_SETTINGS.copy()
-    if SETTINGS_FILE.exists():
+    source = SETTINGS_FILE if SETTINGS_FILE.exists() else LEGACY_SETTINGS_FILE
+    if source.exists():
         try:
-            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            with open(source, "r", encoding="utf-8") as f:
                 settings.update(json.load(f))
         except Exception:
             pass
@@ -243,6 +254,7 @@ def load_settings() -> dict:
 
 def save_settings(settings: dict) -> None:
     clean = {k: v for k, v in settings.items() if k != "font_name"}
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(clean, f, ensure_ascii=False, indent=2)
 
@@ -647,12 +659,14 @@ class App:
             sashrelief="raised", borderwidth=0,
         )
         main.pack(fill="both", expand=True)
+        self.main_panes = main
 
         # Пути закреплены сверху; прокручиваются только настройки ниже.
         left_outer = ttk.Frame(main)
         right = ttk.Frame(main)
         main.add(left_outer, minsize=280, stretch="always")
         main.add(right, minsize=300, stretch="always")
+        self.root.after(100, self._set_initial_split)
 
         top = ttk.Frame(left_outer)
         top.pack(fill="x", padx=8, pady=(6, 4))
@@ -809,6 +823,13 @@ class App:
                 sticky="ew", padx=3, pady=3,
             )
 
+    def _set_initial_split(self):
+        """Start with equal panes while keeping the sash user-adjustable."""
+        self.root.update_idletasks()
+        width = self.main_panes.winfo_width()
+        if width > 1:
+            self.main_panes.sash_place(0, width // 2, 0)
+
     def _resize_preview(self, event):
         """Keep the whole label visible and anchored to the right edge."""
         available_width = max(300, event.width)
@@ -821,9 +842,7 @@ class App:
     def _on_numeric_mousewheel(self, event, variable):
         """Change the focused numeric setting instead of scrolling the panel."""
         try:
-            variable.set(numeric_wheel_value(
-                variable.get(), event.delta, fine=bool(event.state & 0x0001)
-            ))
+            variable.set(numeric_wheel_value(variable.get(), event.delta))
         except Exception:
             pass
         return "break"

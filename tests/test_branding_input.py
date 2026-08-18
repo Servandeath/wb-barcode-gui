@@ -14,13 +14,10 @@ class BrandingTests(unittest.TestCase):
 
 
 class MouseWheelTests(unittest.TestCase):
-    def test_wheel_changes_numeric_value_by_one(self):
-        self.assertEqual(app.numeric_wheel_value(36, 120), 37)
-        self.assertEqual(app.numeric_wheel_value(36, -120), 35)
-
-    def test_shift_wheel_uses_fine_step(self):
-        self.assertEqual(app.numeric_wheel_value(7, 120, fine=True), 7.1)
-        self.assertEqual(app.numeric_wheel_value(7, -120, fine=True), 6.9)
+    def test_wheel_always_changes_numeric_value_by_tenth(self):
+        self.assertEqual(app.numeric_wheel_value(36, 120), 36.1)
+        self.assertEqual(app.numeric_wheel_value(36, -120), 35.9)
+        self.assertEqual(app.numeric_wheel_value(7, 120), 7.1)
 
 
 if __name__ == "__main__":

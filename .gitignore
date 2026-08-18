@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 wb_barcode_settings.json
+dist/
+*.spec
+build/LabelMaster/
