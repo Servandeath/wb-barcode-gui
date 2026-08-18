@@ -115,6 +115,14 @@ def action_button_columns(width: int) -> int:
     return 2
 
 
+def preview_pixels_per_mm(available_width: int | None) -> float:
+    """Scale the complete 58 mm label to the available preview width."""
+    if not available_width:
+        return 11
+    usable_width = max(232, available_width - 16)
+    return min(11, usable_width / LABEL_W_MM)
+
+
 # ---------------------------------------------------------------------------
 # Шрифты
 # ---------------------------------------------------------------------------
@@ -433,8 +441,11 @@ class Preview:
         self.canvas = canvas_widget
         self._photo = None
 
-    def render(self, row: dict, settings: dict, show_grid: bool, font_path: str | None):
-        ppm = self.PX_PER_MM
+    def render(
+        self, row: dict, settings: dict, show_grid: bool, font_path: str | None,
+        available_width: int | None = None,
+    ):
+        ppm = preview_pixels_per_mm(available_width)
         W = int(LABEL_W_MM * ppm)
         H = int(LABEL_H_MM * ppm)
 
@@ -619,8 +630,8 @@ class App:
         # Пути закреплены сверху; прокручиваются только настройки ниже.
         left_outer = ttk.Frame(main)
         right = ttk.Frame(main)
-        main.add(left_outer, minsize=360, stretch="always")
-        main.add(right, minsize=360, stretch="always")
+        main.add(left_outer, minsize=280, stretch="always")
+        main.add(right, minsize=300, stretch="always")
 
         top = ttk.Frame(left_outer)
         top.pack(fill="x", padx=8, pady=(6, 4))
@@ -643,15 +654,28 @@ class App:
         scroll_area = ttk.Frame(left_outer)
         scroll_area.pack(fill="both", expand=True)
         left_canvas = Canvas(scroll_area, highlightthickness=0)
-        left_scroll = ttk.Scrollbar(scroll_area, orient="vertical", command=left_canvas.yview)
-        left_canvas.configure(yscrollcommand=left_scroll.set)
-        left_scroll.pack(side="right", fill="y")
+        left_scroll_y = ttk.Scrollbar(scroll_area, orient="vertical", command=left_canvas.yview)
+        left_scroll_x = ttk.Scrollbar(scroll_area, orient="horizontal", command=left_canvas.xview)
+        left_canvas.configure(
+            yscrollcommand=left_scroll_y.set,
+            xscrollcommand=left_scroll_x.set,
+        )
+        left_scroll_y.pack(side="right", fill="y")
+        left_scroll_x.pack(side="bottom", fill="x")
         left_canvas.pack(side="left", fill="both", expand=True)
         left = ttk.Frame(left_canvas)
         left_window = left_canvas.create_window((0, 0), window=left, anchor="nw")
         left.bind("<Configure>", lambda e: left_canvas.configure(scrollregion=left_canvas.bbox("all")))
-        left_canvas.bind("<Configure>", lambda e: left_canvas.itemconfigure(left_window, width=e.width))
+        left_canvas.bind(
+            "<Configure>",
+            lambda e: left_canvas.itemconfigure(left_window, width=max(e.width, 430)),
+        )
         left_canvas.bind_all("<MouseWheel>", lambda e: left_canvas.yview_scroll(int(-e.delta / 120), "units"))
+        left_canvas.bind_all(
+            "<Shift-MouseWheel>",
+            lambda e: left_canvas.xview_scroll(int(-e.delta / 120), "units"),
+        )
+        self.root.after_idle(lambda: left_canvas.yview_moveto(0))
 
         # ---- настройки ----
         ttk.Label(left, text="Настройки положения, мм. Y считается снизу этикетки").pack(anchor="w", padx=8)
@@ -727,21 +751,24 @@ class App:
         self._action_button_column_count = None
         buttons.bind("<Configure>", self._reflow_action_buttons)
 
-        self.log = Text(left, height=10)
-        self.log.pack(fill="both", expand=True, **pad)
+        self.log = Text(left, height=6)
+        self.log.pack(fill="x", expand=False, **pad)
 
         # ---- ПРАВАЯ ПАНЕЛЬ: ПРЕВЬЮ ----
-        ttk.Label(right, text="Превью этикетки (58×40 мм)").pack(anchor="w")
+        ttk.Label(right, text="Превью этикетки (58×40 мм)").pack(anchor="ne", padx=8)
         self.preview_canvas = Canvas(right, bg="#f4f4f7", highlightthickness=1, highlightbackground="#bbb")
-        self.preview_canvas.pack(pady=6)
+        self.preview_canvas.pack(anchor="ne", padx=8, pady=6)
         self.preview = Preview(self.preview_canvas)
-        ttk.Label(
+        self.preview_help = ttk.Label(
             right,
             text="Синяя сетка = шаг 5 мм. Числа по краям = мм.\n"
                  "Внутренняя рамка = безопасное поле 1 мм (не печатается).\n"
                  "Красная рамка ШК = баркод невалиден.",
-            justify="left", foreground="#555",
-        ).pack(anchor="w")
+            justify="left", foreground="#555", wraplength=420,
+        )
+        self.preview_help.pack(anchor="ne", padx=8)
+        self.preview_available_width = None
+        right.bind("<Configure>", self._resize_preview)
 
         if not FONT_PATH:
             self.write_log("ВНИМАНИЕ: не найден TTF-шрифт с кириллицей. На Windows проверьте C:\\Windows\\Fonts\\arial.ttf")
@@ -761,6 +788,15 @@ class App:
                 row=index // columns, column=index % columns,
                 sticky="ew", padx=3, pady=3,
             )
+
+    def _resize_preview(self, event):
+        """Keep the whole label visible and anchored to the right edge."""
+        available_width = max(300, event.width)
+        self.preview_help.configure(wraplength=max(260, available_width - 16))
+        if available_width == self.preview_available_width:
+            return
+        self.preview_available_width = available_width
+        self.refresh_preview()
 
     # ---------------- действия ----------------
     def choose_excel(self):
@@ -815,7 +851,10 @@ class App:
         try:
             settings = self.current_settings()
             show_grid = bool(self.vars.get("show_grid").get()) if "show_grid" in self.vars else True
-            self.preview.render(self.preview_row, settings, show_grid, FONT_PATH)
+            self.preview.render(
+                self.preview_row, settings, show_grid, FONT_PATH,
+                self.preview_available_width,
+            )
         except Exception:
             # во время ввода значения могут быть временно пустыми — это нормально
             pass
