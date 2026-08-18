@@ -48,6 +48,8 @@ from reportlab.graphics.barcode.eanbc import Ean13BarcodeWidget
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 
+APP_NAME = "Мастер этикеток — наклейки и штрихкоды"
+APP_ICON = Path("assets") / "app_icon.ico"
 LABEL_W_MM = 58
 LABEL_H_MM = 40
 PREVIEW_SAFE_MARGIN_MM = 1
@@ -121,6 +123,21 @@ def preview_pixels_per_mm(available_width: int | None) -> float:
         return 11
     usable_width = max(232, available_width - 16)
     return min(11, usable_width / LABEL_W_MM)
+
+
+def numeric_wheel_value(value: float, delta: int, fine: bool = False) -> float:
+    """Adjust a numeric setting from one mouse-wheel event."""
+    direction = 1 if delta > 0 else -1
+    step = 0.1 if fine else 1.0
+    return round(float(value) + direction * step, 3)
+
+
+def resource_path(relative_path: Path) -> Path:
+    """Resolve bundled PyInstaller resources and regular source-tree assets."""
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        return Path(bundle_root) / relative_path
+    return Path(__file__).resolve().parent / relative_path
 
 
 # ---------------------------------------------------------------------------
@@ -601,9 +618,13 @@ class App:
 
     def __init__(self, root: Tk):
         self.root = root
-        self.root.title("WB генератор ШК / этикеток 58x40")
+        self.root.title(APP_NAME)
         self.root.geometry("1180x760")
         self.root.minsize(820, 620)
+        try:
+            self.root.iconbitmap(default=str(resource_path(APP_ICON)))
+        except Exception:
+            pass
         self.settings = load_settings()
 
         self.pdf_font_name = register_pdf_font()
@@ -654,6 +675,8 @@ class App:
         scroll_area = ttk.Frame(left_outer)
         scroll_area.pack(fill="both", expand=True)
         left_canvas = Canvas(scroll_area, highlightthickness=0)
+        self.settings_canvas = left_canvas
+        self.settings_panel = left_outer
         left_scroll_y = ttk.Scrollbar(scroll_area, orient="vertical", command=left_canvas.yview)
         left_scroll_x = ttk.Scrollbar(scroll_area, orient="horizontal", command=left_canvas.xview)
         left_canvas.configure(
@@ -670,11 +693,7 @@ class App:
             "<Configure>",
             lambda e: left_canvas.itemconfigure(left_window, width=max(e.width, 430)),
         )
-        left_canvas.bind_all("<MouseWheel>", lambda e: left_canvas.yview_scroll(int(-e.delta / 120), "units"))
-        left_canvas.bind_all(
-            "<Shift-MouseWheel>",
-            lambda e: left_canvas.xview_scroll(int(-e.delta / 120), "units"),
-        )
+        self.root.bind_all("<MouseWheel>", self._on_settings_mousewheel, add="+")
         self.root.after_idle(lambda: left_canvas.yview_moveto(0))
 
         # ---- настройки ----
@@ -710,6 +729,7 @@ class App:
                 ttk.Label(frame, text=label).grid(row=i // 2, column=(i % 2) * 2, sticky="w", padx=5, pady=3)
                 e = ttk.Entry(frame, textvariable=var, width=8)
                 e.grid(row=i // 2, column=(i % 2) * 2 + 1, padx=5, pady=3)
+                e.bind("<MouseWheel>", lambda event, value=var: self._on_numeric_mousewheel(event, value))
 
         # ---- опции ----
         opt_frame = ttk.Frame(left)
@@ -797,6 +817,36 @@ class App:
             return
         self.preview_available_width = available_width
         self.refresh_preview()
+
+    def _on_numeric_mousewheel(self, event, variable):
+        """Change the focused numeric setting instead of scrolling the panel."""
+        try:
+            variable.set(numeric_wheel_value(
+                variable.get(), event.delta, fine=bool(event.state & 0x0001)
+            ))
+        except Exception:
+            pass
+        return "break"
+
+    def _on_settings_mousewheel(self, event):
+        """Scroll settings only when the pointer is inside the settings panel."""
+        widget = event.widget
+        inside_settings = False
+        while widget is not None:
+            if widget == self.settings_panel:
+                inside_settings = True
+                break
+            widget = getattr(widget, "master", None)
+        if not inside_settings:
+            return None
+        if event.widget == self.log or event.widget.winfo_class() in {"TEntry", "Entry"}:
+            return None
+        units = int(-event.delta / 120)
+        if event.state & 0x0001:
+            self.settings_canvas.xview_scroll(units, "units")
+        else:
+            self.settings_canvas.yview_scroll(units, "units")
+        return "break"
 
     # ---------------- действия ----------------
     def choose_excel(self):
