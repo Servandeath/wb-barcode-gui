@@ -49,7 +49,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 
 APP_NAME = "Мастер этикеток — наклейки и штрихкоды"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.2"
 APP_ICON = Path("assets") / "app_icon.ico"
 LABEL_W_MM = 58
 LABEL_H_MM = 40
